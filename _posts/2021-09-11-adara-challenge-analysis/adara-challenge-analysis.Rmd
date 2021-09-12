@@ -1,0 +1,383 @@
+---
+title: "Adara Challenge Analysis"
+description: |
+  Technical Analytical Assessment for Field Data Science team
+
+preview: img/preview_image.png
+author:
+  - name: Archie Dolit
+    url: https://www.linkedin.com/in/adolit/
+    affiliation: School of Computing and Information Systems, Singapore Management University
+    affiliation_url: https://scis.smu.edu.sg/
+date: 09-11-2021
+output:
+  distill::distill_article:
+    self_contained: false
+    toc: true
+    toc_depth: 3
+    code_folding: hide
+categories:
+  - R
+  - Adara
+  - Analytical Assessment
+---
+
+```{r setup, include=FALSE}
+options(htmltools.dir.version = FALSE)
+knitr::opts_chunk$set(fig.retina=3,
+                      echo = TRUE,
+                      eval = TRUE,
+                      message = FALSE,
+                      warning = FALSE)
+```
+
+## 1. Executive Summary
+
+Distill is a publication format for scientific and technical writing, native to the web.
+
+## 2. Methodology
+
+### 2.1 Data Dictionary
+
+The data contains events from the months of January 2019 and January 2021; the 2019 can be used as a basis of comparison for the activity in 2021.
+
+The destinations contained in the data are selected top-tier cities in Germany, UK, France, Italy, and Spain
+
+The table below shows the definition of attributes:
+
+Attributes | Definition
+-----|---------------
+**event_date** | The date of the search or booking activity. This is different from the departure_checkin_date, which is the actual date of travel activity: if a customer makes a booking today for  check-in on 1 October, today’s date would be the event date, and 1 October would be the “departure_checkin_date”
+**activity_group** | An indicator of the type of event on the hotel website.  Classified as “Searching” (a general search for a room) or “Booking” (an actual reservation)
+**reason_for_travel_detailed** | this is the Reason for Travel, categorized as either “Business”, “Leisure-Non-Family” (leisure travel consisting of 1 or 2 people), and “Leisure-Family” (leisure travel consisting of 3 or more people)
+**origin_country_code** | 2-letter ISO country code indicating the origin country from which the booking or search activity was made
+**hotel_city,hotel_state,hotel_country** | raw information specifying the destination in question.  <br>Note that this data is in an _unclean_ state, provided straight from the source system.
+**traveler_value_group** | Indicator of traveler value (overall spend + loyalty status), grouped into “Low”, “Medium”, “High”
+**departure_checkin_date** | Start date of hotel stay; see _event_date_ to determine how the date information differs.
+**total_number_events** | Aggregated count of total number of events
+
+
+### 2.1 Exploratory Data Analysis
+
+**Install and Launch R Packages**
+
+```{r r package}
+packages = c('ggiraph',
+             'plotly', 
+             'lubridate',
+             'clock',
+             'DT',
+             'tidyverse')
+
+for(p in packages){
+  if(!require(p, character.only = T)){
+    install.packages(p)
+  }
+  library(p, character.only = T)
+}
+```
+
+**Import Data**
+
+```{r import csv}
+raw_data <- read_csv("data/sample_data.csv")
+glimpse(raw_data)
+```
+
+**Mutate Date**
+
+```{r mutate date}
+raw_data$event_wday <- wday(raw_data$event_date,
+                          label = TRUE,
+                          abbr = TRUE)
+
+raw_data$event_year <- factor(year(raw_data$event_date))
+
+raw_data$event_mday <- factor(paste(month(raw_data$event_date,
+                             label = TRUE,
+                             abbr = TRUE),
+                             str_pad(mday(raw_data$event_date),2,side="left", pad=0),
+                             sep = " "))
+
+raw_data$checkin_wday <- factor(wday(raw_data$event_date,
+                          label = TRUE,
+                          abbr = TRUE))
+
+raw_data$checkin_year <- factor(year(raw_data$event_date))
+
+raw_data$checkin_mday <- factor(paste(month(raw_data$event_date,
+                             label = TRUE,
+                             abbr = TRUE),
+                             str_pad(mday(raw_data$event_date),2,side="left", pad=0),
+                             sep = " "))
+glimpse(raw_data)
+```
+
+**Event Year EDA**
+
+```{r event year EDA}
+
+color_2019 <- "darkgray"
+color_2021 <- "purple"
+color_bg <- "snow"
+
+# event_year_cnt <- raw_data %>%
+#   count(event_year) %>%
+#   plot_ly(x=~event_year,
+#           y=~n,
+#           type= 'bar',
+#           marker = list(color = color_2021),
+#           hovertemplate = paste('Event Year: %{x}<br>',
+#                                 'Count: %{y}',
+#                                 '<extra></extra>')) %>%
+#   layout(xaxis = list(title = ""),
+#          yaxis = list(title = "Total Number of Events"),
+#          hoverlabel=list(bgcolor=color_bg))
+#event_year_cnt
+
+event_year_data <- raw_data %>%
+  group_by(event_year) %>%
+  summarise(event_year_sum = sum(total_number_events))
+
+event_year_total <- event_year_data %>%
+  plot_ly(x=~event_year,
+          y=~event_year_sum,
+          type= 'bar',
+          marker = list(color = c(color_2019,color_2021)),
+          hovertemplate = paste('Event Year: %{x}<br>',
+                                'Total Number of Events: %{y}',
+                                '<extra></extra>')) %>%
+  layout(title = "Event Year EDA",
+         xaxis = list(title = "Event Year"),
+         yaxis = list(title = "Total Number of Events"),
+         hoverlabel=list(bgcolor=color_bg))
+
+event_year_total
+```
+
+```{r event year table}
+event_year_data$pct_total <- prop.table(event_year_data$event_year_sum) 
+
+DT::datatable(data = event_year_data,
+              options = list(pageLength = 2),
+              colnames = c("Event Year", "Total Number of Events", "Percent of Total"),
+              rownames = FALSE,
+              filter = "none",
+              autoHideNavigation = TRUE) %>%
+  formatRound('event_year_sum', digits = 0) %>%
+  formatPercentage('pct_total', 2)
+```
+
+**Event Month Day EDA**
+
+```{r event month EDA}
+
+event_mday_2019 <- raw_data %>%
+  filter(event_year == 2019) %>%
+  group_by(event_mday) %>%
+  summarise(mday_2019_sum = sum(total_number_events)) %>%
+  arrange(event_mday)
+
+event_mday_2021 <- raw_data %>%
+  filter(event_year == 2021) %>%
+  group_by(event_mday) %>%
+  summarise(mday_2021_sum = sum(total_number_events)) %>%
+  arrange(event_mday)
+
+event_mday_data <- left_join(event_mday_2019,event_mday_2021)
+  
+event_mday_total <- event_mday_data %>%
+  plot_ly(x=~event_mday,
+          y=~mday_2019_sum ,
+          type= 'bar',
+          marker = list(color = color_2019),
+          name = '2019',
+          hovertemplate = paste('Event Month Day: %{x}, 2019<br>',
+                                'Total Number of Events: %{y}',
+                                '<extra></extra>')) %>%
+  add_trace(y =~mday_2021_sum,
+            marker = list(color = color_2021),
+            name = '2021',
+            hovertemplate = paste('Event Month Day: %{x}, 2021<br>',
+                                  'Total Number of Events: %{y}',
+                                  '<extra></extra>')) %>%
+  layout(title = "Event Month Day EDA",
+         xaxis = list(title = "Event Month Day"),
+         yaxis = list(title = "Total Number of Events"),
+         hoverlabel=list(bgcolor=color_bg))
+
+event_mday_total
+```
+
+
+```{r event month table}
+event_mday_data$diff_val <- event_mday_data$mday_2021_sum - event_mday_data$mday_2019_sum
+event_mday_data$diff_pct <- event_mday_data$diff_val/event_mday_data$mday_2019_sum
+
+DT::datatable(data = event_mday_data,
+              options = list(pageLength = 31),
+              colnames = c("Event Day of Month", "2019 Total Events", "2021 Total Events", "Difference (Values)" ,"Difference (%)"),
+              rownames = FALSE,
+              filter = "none",
+              autoHideNavigation = TRUE) %>%
+  formatRound('mday_2019_sum', digits = 0) %>%
+  formatRound('mday_2021_sum', digits = 0) %>%
+  formatRound('diff_val', digits = 0) %>%
+  formatPercentage('diff_pct', 2)
+```
+
+**Event Weekday EDA**
+
+```{r event wday EDA}
+
+event_wday_2019 <- raw_data %>%
+  filter(event_year == 2019) %>%
+  group_by(event_wday) %>%
+  summarise(wday_2019_sum = sum(total_number_events))
+
+event_wday_2021 <- raw_data %>%
+  filter(event_year == 2021) %>%
+  group_by(event_wday) %>%
+  summarise(wday_2021_sum = sum(total_number_events))
+
+event_wday_data <- left_join(event_wday_2019,event_wday_2021)
+  
+event_wday_total <- event_wday_data %>%
+  plot_ly(x=~event_wday,
+          y=~wday_2019_sum ,
+          type= 'bar',
+          marker = list(color = color_2019),
+          name = '2019',
+          hovertemplate = paste('Event Week Day: %{x} 2019<br>',
+                                'Total Number of Events: %{y}',
+                                '<extra></extra>')) %>%
+  add_trace(y =~wday_2021_sum,
+            marker = list(color = color_2021),
+            name = '2021',
+            hovertemplate = paste('Event Week Day: %{x} 2021<br>',
+                                  'Total Number of Events: %{y}',
+                                  '<extra></extra>')) %>%
+  layout(title = "Event Weekday EDA",
+         xaxis = list(title = "Event Week Day"),
+         yaxis = list(title = "Total Number of Events"),
+         hoverlabel=list(bgcolor=color_bg))
+
+event_wday_total
+```
+
+```{r event wday table}
+event_wday_data$diff <- event_wday_data$wday_2021_sum - event_wday_data$wday_2019_sum
+event_wday_data$pct_diff <- event_wday_data$diff/event_wday_data$wday_2019_sum
+
+DT::datatable(data = event_wday_data,
+              options = list(pageLength = 7),
+              colnames = c("Event Weekday", "2019 Total Events", "2021 Total Events", "Difference (Values)" ,"Difference (%)"),
+              rownames = FALSE,
+              filter = "none",
+              autoHideNavigation = TRUE) %>%
+  formatRound('wday_2019_sum', digits = 0) %>%
+  formatRound('wday_2021_sum', digits = 0) %>%
+  formatRound('diff', digits = 0) %>%
+  formatPercentage('pct_diff', 2)
+```
+
+**Activity Group EDA**
+
+```{r activity group EDA}
+
+color_book   <- "maroon"
+color_search <- "gainsboro"
+
+activity_data <- raw_data %>%
+  group_by(activity_group) %>%
+  summarise(activity_sum = sum(total_number_events))
+
+activity_total <- activity_data %>%
+  plot_ly(x=~activity_group,
+          y=~activity_sum,
+          type= 'bar',
+          marker = list(color = c(color_book,color_search)),
+          hovertemplate = paste('Activity Group: %{x}<br>',
+                                'Total Number of Events: %{y}',
+                                '<extra></extra>')) %>%
+  layout(title = "Activity Group EDA",
+         xaxis = list(title = ""),
+         yaxis = list(title = "Total Number of Events"),
+         hoverlabel=list(bgcolor=color_bg))
+
+activity_total
+```
+
+```{r activity group table}
+
+activity_data$pct_total <- prop.table(activity_data$activity_sum) 
+
+DT::datatable(data = activity_data,
+              options = list(pageLength = 2),
+              colnames = c("Activity Group", "Total Number of Events", "Percent of Total"),
+              rownames = FALSE,
+              filter = "none",
+              autoHideNavigation = TRUE) %>%
+  formatRound('activity_sum', digits = 0) %>%
+  formatPercentage('pct_total', 2)
+```
+
+**Reason for Travel Detailed EDA**
+
+```{r reason_travel_sum EDA}
+
+color_biz <- "pink" #business
+color_lfam <- "deeppink"  #leisure-family
+color_lnf  <- "palevioletred"  #leisure-non-family
+
+reason_travel_data <- raw_data %>%
+  group_by(reason_for_travel_detailed) %>%
+  summarise(reason_travel_sum = sum(total_number_events))
+
+activity_total <- reason_travel_data %>%
+  plot_ly(x=~reason_for_travel_detailed,
+          y=~reason_travel_sum,
+          type= 'bar',
+          marker = list(color = c(color_biz,color_lfam, color_lnf)),
+          hovertemplate = paste('Reason For Travel Detailed: %{x}<br>',
+                                'Total Number of Events: %{y}',
+                                '<extra></extra>')) %>%
+  layout(title = "Reason for Travel Detailed EDA",
+         xaxis = list(title = ""),
+         yaxis = list(title = "Total Number of Events"),
+         hoverlabel=list(bgcolor=color_bg))
+
+activity_total
+```
+
+```{r travel reason table}
+
+reason_travel_data$pct_total <- prop.table(reason_travel_data$reason_travel_sum)
+
+DT::datatable(data = reason_travel_data,
+              options = list(pageLength = 3),
+              colnames = c("Reason for Travel Detailed", "Total Number of Events", "Percent of Total"),
+              rownames = FALSE,
+              filter = "none",
+              autoHideNavigation = TRUE) %>%
+  formatRound('reason_travel_sum', digits = 0) %>%
+  formatPercentage('pct_total', 2)
+```
+
+
+
+### 2.2 Data Understanding
+
+Distill is a publication format for scientific and technical writing, native to the web.
+
+### 2.3 Data Visualisation
+
+Distill is a publication format for scientific and technical writing, native to the web.
+
+## 3. Derived Insights
+
+Distill is a publication format for scientific and technical writing, native to the web.
+
+## 4. Recommendations
+
+Distill is a publication format for scientific and technical writing, native to the web.
