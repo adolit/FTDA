@@ -31,9 +31,13 @@ knitr::opts_chunk$set(fig.retina=3,
                       warning = FALSE)
 ```
 
-## 1. Executive Summary
+## 1. Overview
 
 Distill is a publication format for scientific and technical writing, native to the web.
+
+### 1.1 Key Findings
+
+### 1.1 Recommendations
 
 ## 2. Methodology
 
@@ -67,6 +71,7 @@ packages = c('ggiraph',
              'lubridate',
              'clock',
              'DT',
+             'vtable',
              'tidyverse')
 
 for(p in packages){
@@ -84,7 +89,13 @@ raw_data <- read_csv("data/sample_data.csv")
 glimpse(raw_data)
 ```
 
-**Mutate Date**
+**Summary Statistics**
+
+```{r summary 2 csv}
+st(raw_data)
+```
+
+**Mutate Date and Traver Value Group**
 
 ```{r mutate date}
 raw_data$event_wday <- wday(raw_data$event_date,
@@ -99,17 +110,19 @@ raw_data$event_mday <- factor(paste(month(raw_data$event_date,
                              str_pad(mday(raw_data$event_date),2,side="left", pad=0),
                              sep = " "))
 
-raw_data$checkin_wday <- factor(wday(raw_data$event_date,
+raw_data$checkin_wday <- factor(wday(raw_data$departure_checkin_date,
                           label = TRUE,
                           abbr = TRUE))
 
-raw_data$checkin_year <- factor(year(raw_data$event_date))
+raw_data$checkin_year <- factor(year(raw_data$departure_checkin_date))
 
-raw_data$checkin_mday <- factor(paste(month(raw_data$event_date,
+raw_data$checkin_month <- factor(month(raw_data$departure_checkin_date,
                              label = TRUE,
-                             abbr = TRUE),
-                             str_pad(mday(raw_data$event_date),2,side="left", pad=0),
-                             sep = " "))
+                             abbr = TRUE))
+
+raw_data$traveler_value_group <- factor(raw_data$traveler_value_group, order = TRUE,
+                                        levels = c("Low", "Med", "High"))
+
 glimpse(raw_data)
 ```
 
@@ -148,7 +161,7 @@ event_year_total <- event_year_data %>%
                                 'Total Number of Events: %{y}',
                                 '<extra></extra>')) %>%
   layout(title = "Event Year EDA",
-         xaxis = list(title = "Event Year"),
+         xaxis = list(title = ""),
          yaxis = list(title = "Total Number of Events"),
          hoverlabel=list(bgcolor=color_bg))
 
@@ -189,20 +202,24 @@ event_mday_data <- left_join(event_mday_2019,event_mday_2021)
 event_mday_total <- event_mday_data %>%
   plot_ly(x=~event_mday,
           y=~mday_2019_sum ,
-          type= 'bar',
+          type = 'scatter',
+          mode = 'lines+markers',
+          line = list(color = color_2019),
           marker = list(color = color_2019),
           name = '2019',
           hovertemplate = paste('Event Month Day: %{x}, 2019<br>',
                                 'Total Number of Events: %{y}',
                                 '<extra></extra>')) %>%
   add_trace(y =~mday_2021_sum,
+            mode = 'lines+markers',
+            line = list(color = color_2021),
             marker = list(color = color_2021),
             name = '2021',
             hovertemplate = paste('Event Month Day: %{x}, 2021<br>',
                                   'Total Number of Events: %{y}',
                                   '<extra></extra>')) %>%
   layout(title = "Event Month Day EDA",
-         xaxis = list(title = "Event Month Day"),
+         xaxis = list(title = ""),
          yaxis = list(title = "Total Number of Events"),
          hoverlabel=list(bgcolor=color_bg))
 
@@ -258,7 +275,7 @@ event_wday_total <- event_wday_data %>%
                                   'Total Number of Events: %{y}',
                                   '<extra></extra>')) %>%
   layout(title = "Event Weekday EDA",
-         xaxis = list(title = "Event Week Day"),
+         xaxis = list(title = ""),
          yaxis = list(title = "Total Number of Events"),
          hoverlabel=list(bgcolor=color_bg))
 
@@ -285,8 +302,8 @@ DT::datatable(data = event_wday_data,
 
 ```{r activity group EDA}
 
-color_book   <- "maroon"
-color_search <- "gainsboro"
+color_book   <- "purple"
+color_search <- "darkgray"
 
 activity_data <- raw_data %>%
   group_by(activity_group) %>%
@@ -326,16 +343,17 @@ DT::datatable(data = activity_data,
 
 ```{r reason_travel_sum EDA}
 
-color_biz <- "pink" #business
-color_lfam <- "deeppink"  #leisure-family
-color_lnf  <- "palevioletred"  #leisure-non-family
+color_biz <- "orchid" #business
+color_lfam <- "darkorchid"  #leisure-family
+color_lnf  <- "purple"  #leisure-non-family
 
 reason_travel_data <- raw_data %>%
   group_by(reason_for_travel_detailed) %>%
-  summarise(reason_travel_sum = sum(total_number_events))
+  summarise(reason_travel_sum = sum(total_number_events)) %>%
+  arrange(desc(reason_travel_sum))
 
 activity_total <- reason_travel_data %>%
-  plot_ly(x=~reason_for_travel_detailed,
+  plot_ly(x=~reorder(reason_for_travel_detailed,desc(reason_travel_sum)),
           y=~reason_travel_sum,
           type= 'bar',
           marker = list(color = c(color_biz,color_lfam, color_lnf)),
@@ -355,7 +373,7 @@ activity_total
 reason_travel_data$pct_total <- prop.table(reason_travel_data$reason_travel_sum)
 
 DT::datatable(data = reason_travel_data,
-              options = list(pageLength = 3),
+              options = list(pageLength = 4),
               colnames = c("Reason for Travel Detailed", "Total Number of Events", "Percent of Total"),
               rownames = FALSE,
               filter = "none",
@@ -365,8 +383,349 @@ DT::datatable(data = reason_travel_data,
 ```
 
 
+**Origin Country Code**
 
-### 2.2 Data Understanding
+```{r origin country EDA}
+
+origin_country_data <- raw_data %>%
+  group_by(origin_country_code) %>%
+  summarise(origin_country_sum = sum(total_number_events)) %>%
+  arrange(desc(origin_country_sum))
+
+origin_country_total <- origin_country_data %>%
+  slice_head(n = 10) %>%
+  plot_ly(x=~origin_country_sum,
+          y=~reorder(origin_country_code,origin_country_sum),
+          type= 'bar',
+          marker = list(color = color_book),
+          hovertemplate = paste('Origin Country: %{y}<br>',
+                                'Total Number of Events: %{x}',
+                                '<extra></extra>')) %>%
+  layout(title = "Top 10 Origin Country Code EDA",
+         yaxis = list(title = ""),
+         xaxis = list(title = "Total Number of Events"),
+         hoverlabel=list(bgcolor=color_bg))
+
+origin_country_total
+```
+
+```{r origin country table}
+
+origin_country_data$pct_total <- prop.table(origin_country_data$origin_country_sum)
+
+DT::datatable(data = origin_country_data,
+              options = list(pageLength = 20),
+              colnames = c("Origin Country Code", "Total Number of Events", "Percent of Total"),
+              #rownames = FALSE,
+              filter = "none",
+              autoHideNavigation = TRUE) %>%
+  formatRound('origin_country_sum', digits = 0) %>%
+  formatPercentage('pct_total', 2)
+```
+
+**Hotel City**
+
+```{r hotel city EDA}
+
+hotel_city_data <- raw_data %>%
+  group_by(hotel_city) %>%
+  summarise(hotel_city_sum = sum(total_number_events)) %>%
+  arrange(desc(hotel_city_sum))
+
+hotel_city_total <- hotel_city_data %>%
+  slice_head(n = 10) %>%
+  plot_ly(x=~hotel_city_sum,
+          y=~reorder(hotel_city,hotel_city_sum),
+          type= 'bar',
+          marker = list(color = color_book),
+          hovertemplate = paste('Hotel City: %{y}<br>',
+                                'Total Number of Events: %{x}',
+                                '<extra></extra>')) %>%
+  layout(title = "Top 10 Hotel City EDA",
+         yaxis = list(title = ""),
+         xaxis = list(title = "Total Number of Events"),
+         hoverlabel=list(bgcolor=color_bg))
+
+hotel_city_total
+```
+
+```{r hotel city table}
+
+hotel_city_data$pct_total <- prop.table(hotel_city_data$hotel_city_sum)
+
+DT::datatable(data = hotel_city_data,
+              options = list(pageLength = 37),
+              colnames = c("Hotel City", "Total Number of Events", "Percent of Total"),
+              #rownames = FALSE,
+              filter = "none",
+              autoHideNavigation = TRUE) %>%
+  formatRound('hotel_city_sum', digits = 0) %>%
+  formatPercentage('pct_total', 2)
+```
+
+**Hotel State**
+
+```{r hotel state EDA}
+hotel_state_data <- raw_data %>%
+  group_by(hotel_state) %>%
+  summarise(hotel_state_sum = sum(total_number_events)) %>%
+  arrange(desc(hotel_state_sum))
+
+hotel_state_total <- hotel_state_data %>%
+  slice_head(n = 10) %>%
+  plot_ly(x=~hotel_state_sum,
+          y=~reorder(hotel_state,hotel_state_sum),
+          type= 'bar',
+          marker = list(color = color_book),
+          hovertemplate = paste('Hotel State: %{y}<br>',
+                                'Total Number of Events: %{x}',
+                                '<extra></extra>')) %>%
+  layout(title = "Top 10 Hotel State EDA",
+         yaxis = list(title = ""),
+         xaxis = list(title = "Total Number of Events"),
+         hoverlabel=list(bgcolor=color_bg))
+
+hotel_state_total
+```
+
+```{r hotel state table}
+
+hotel_state_data$pct_total <- prop.table(hotel_state_data$hotel_state_sum)
+
+DT::datatable(data = hotel_state_data,
+              options = list(pageLength = 20),
+              colnames = c("Hotel State", "Total Number of Events", "Percent of Total"),
+              #rownames = FALSE,
+              filter = "none",
+              autoHideNavigation = TRUE) %>%
+  formatRound('hotel_state_sum', digits = 0) %>%
+  formatPercentage('pct_total', 2)
+```
+
+**Hotel Country**
+
+```{r hotel country EDA}
+hotel_country_data <- raw_data %>%
+  group_by(hotel_country) %>%
+  summarise(hotel_country_sum = sum(total_number_events)) %>%
+  arrange(desc(hotel_country_sum))
+
+hotel_country_total <- hotel_country_data %>%
+  slice_head(n = 10) %>%
+  plot_ly(x=~hotel_country_sum,
+          y=~reorder(hotel_country,hotel_country_sum),
+          type= 'bar',
+          marker = list(color = color_book),
+          hovertemplate = paste('Hotel Country: %{y}<br>',
+                                'Total Number of Events: %{x}',
+                                '<extra></extra>')) %>%
+  layout(title = "Top 10 Hotel Country EDA",
+         yaxis = list(title = ""),
+         xaxis = list(title = "Total Number of Events"),
+         hoverlabel=list(bgcolor=color_bg))
+
+hotel_country_total
+```
+
+
+```{r hotel country table}
+
+hotel_country_data$pct_total <- prop.table(hotel_country_data$hotel_country_sum)
+
+DT::datatable(data = hotel_country_data,
+              options = list(pageLength = 20),
+              colnames = c("Hotel Country", "Total Number of Events", "Percent of Total"),
+              #rownames = FALSE,
+              filter = "none",
+              autoHideNavigation = TRUE) %>%
+  formatRound('hotel_country_sum', digits = 0) %>%
+  formatPercentage('pct_total', 2)
+```
+
+
+**Traveler Value Group EDA**
+
+```{r traveler value EDA}
+
+color_low <- "orchid" #business
+color_med <- "darkorchid"  #leisure-family
+color_high  <- "purple"  #leisure-non-family
+
+traveler_value_data <- raw_data %>%
+  group_by(traveler_value_group) %>%
+  summarise(traveler_value_sum = sum(total_number_events))%>%
+  arrange(desc(traveler_value_sum))
+
+traveler_value_total <- traveler_value_data %>%
+  plot_ly(x=~reorder(traveler_value_group,desc(traveler_value_sum)),
+          y=~traveler_value_sum,
+          type= 'bar',
+          marker = list(color = c(color_low,color_med, color_high)),
+          hovertemplate = paste('Traveler Value Group: %{x}<br>',
+                                'Total Number of Events: %{y}',
+                                '<extra></extra>')) %>%
+  layout(title = "Traveler Value Group EDA",
+         xaxis = list(title = ""),
+         yaxis = list(title = "Total Number of Events"),
+         hoverlabel=list(bgcolor=color_bg))
+
+traveler_value_total
+```
+
+```{r traveler value table}
+
+traveler_value_data$pct_total <- prop.table(traveler_value_data$traveler_value_sum)
+
+DT::datatable(data = traveler_value_data,
+              options = list(pageLength = 4),
+              colnames = c("Traveler Value Group", "Total Number of Events", "Percent of Total"),
+              rownames = FALSE,
+              filter = "none",
+              autoHideNavigation = TRUE) %>%
+  formatRound('traveler_value_sum', digits = 0) %>%
+  formatPercentage('pct_total', 2)
+```
+
+
+**Checkin Year EDA**
+
+```{r checkin year EDA}
+
+checkin_year_data <- raw_data %>%
+  group_by(checkin_year) %>%
+  summarise(checkin_year_sum = sum(total_number_events))
+
+checkin_year_total <- checkin_year_data %>%
+  plot_ly(x=~checkin_year,
+          y=~checkin_year_sum,
+          type= 'bar',
+          marker = list(color = c(color_2019,color_low, color_2021, color_low, color_low, color_low)),
+          hovertemplate = paste('Checkin Year: %{x}<br>',
+                                'Total Number of Events: %{y}',
+                                '<extra></extra>')) %>%
+  layout(title = "Checkin Year EDA",
+         xaxis = list(title = ""),
+         yaxis = list(title = "Total Number of Events"),
+         hoverlabel=list(bgcolor=color_bg))
+
+checkin_year_total
+```
+
+```{r checkin year table}
+checkin_year_data$pct_total <- prop.table(checkin_year_data$checkin_year_sum) 
+
+DT::datatable(data = checkin_year_data,
+              options = list(pageLength = 10),
+              colnames = c("Checkin Year", "Total Number of Events", "Percent of Total"),
+              rownames = FALSE,
+              filter = "none",
+              autoHideNavigation = TRUE) %>%
+  formatRound('checkin_year_sum', digits = 0) %>%
+  formatPercentage('pct_total', 2)
+```
+
+**Checkin Month Day EDA**
+
+```{r checkin month EDA}
+
+checkin_month_data <- raw_data %>%
+  group_by(checkin_month) %>%
+  summarise(checkin_month_sum = sum(total_number_events)) 
+
+event_month_total <- checkin_month_data %>%
+  plot_ly(x=~checkin_month,
+          y=~checkin_month_sum,
+          type= 'bar',
+          marker = list(color = color_2021),
+          hovertemplate = paste('Checkin Month: %{x}<br>',
+                                'Total Number of Events: %{y}',
+                                '<extra></extra>')) %>%
+  layout(title = "Checkin Month EDA",
+         xaxis = list(title = ""),
+         yaxis = list(title = "Total Number of Events"),
+         hoverlabel=list(bgcolor=color_bg))
+
+event_month_total
+```
+
+```{r checkin month table}
+checkin_month_data$pct_total <- prop.table(checkin_month_data$checkin_month_sum) 
+
+DT::datatable(data = checkin_month_data,
+              options = list(pageLength = 12),
+              colnames = c("Checkin Month", "Total Number of Events", "Percent of Total"),
+              rownames = FALSE,
+              filter = "none",
+              autoHideNavigation = TRUE) %>%
+  formatRound('checkin_month_sum', digits = 0) %>%
+  formatPercentage('pct_total', 2)
+```
+
+
+**Total Number of Events Histogram**
+
+
+```{r total event boxplot}
+
+total_event_bp <- raw_data %>%
+  select(total_number_events) %>%
+  plot_ly(y=~total_number_events,
+          type= 'box',
+          boxpoints = "all",
+          jitter = 0.3,
+          marker = list(color = color_2019),
+          line = list(color = color_2019),
+          fillcolor  = list(color = color_2019),
+          name = "All Points") %>%
+  layout(title = "Total Number of Easdfvents Boxplot",
+         xaxis = list(title = ""),
+         yaxis = list(title = "Total Number of Events"),
+         hoverlabel=list(bgcolor=color_bg))
+
+total_event_bp
+```
+
+
+```{r total event hist}
+
+total_event_data <- raw_data %>%
+  count(total_number_events) %>%
+  rename(count = n) %>%
+  arrange(desc(count))
+
+total_event_hist <- total_event_data %>%
+  slice_head(n = 10) %>%
+  plot_ly(x=~count,
+          y=~reorder(total_number_events,count),
+          type= 'bar',
+          marker = list(color = color_2021),
+          hovertemplate = paste('Total Number of Events: %{y} <br>',
+                                'Count: %{x}',
+                                '<extra></extra>')) %>%
+  layout(title = "Top 10 Total Number of Events Histogram",
+         xaxis = list(title = "Count"),
+         yaxis = list(title = "Total Number of Events"),
+         hoverlabel=list(bgcolor=color_bg))
+
+total_event_hist
+```
+
+```{r total event table}
+
+total_event_data$pct_total <- prop.table(total_event_data$count)
+
+DT::datatable(data = total_event_data,
+              options = list(pageLength = 20),
+              colnames = c("Total Number of Events", "Count", "Percent of Total"),
+              #rownames = FALSE,
+              filter = "none",
+              autoHideNavigation = TRUE) %>%
+  formatRound('count', digits = 0) %>%
+  formatPercentage('pct_total', 2)
+```
+
+
+### 2.2 Data Preparation
 
 Distill is a publication format for scientific and technical writing, native to the web.
 
