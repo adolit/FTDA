@@ -14,7 +14,7 @@ output:
   distill::distill_article:
     self_contained: false
     toc: true
-    toc_depth: 3
+    toc_depth: 4
     code_folding: hide
 categories:
   - R
@@ -31,17 +31,9 @@ knitr::opts_chunk$set(fig.retina=3,
                       warning = FALSE)
 ```
 
-## 1. Overview
+## 1. Exploratory Data Analysis
 
-Distill is a publication format for scientific and technical writing, native to the web.
-
-### 1.1 Key Findings
-
-### 1.1 Recommendations
-
-## 2. Methodology
-
-### 2.1 Data Dictionary
+### 1.1 Data Dictionary
 
 The data contains events from the months of January 2019 and January 2021; the 2019 can be used as a basis of comparison for the activity in 2021.
 
@@ -61,15 +53,13 @@ Attributes | Definition
 **total_number_events** | Aggregated count of total number of events
 
 
-### 2.1 Exploratory Data Analysis
+### 1.2 Data Exploration
 
 **Install and Launch R Packages**
 
 ```{r r package}
-packages = c('ggiraph',
-             'plotly', 
+packages = c('plotly', 
              'lubridate',
-             'clock',
              'DT',
              'vtable',
              'tidyverse')
@@ -82,12 +72,23 @@ for(p in packages){
 }
 ```
 
+* plotly - interactive data visualization
+
+* lubridate - date wrangling
+
+* DT - interactive data tables
+
+* vtable - summary statistics
+
+* tidyverse - set of packages for data science workflow to import, tidy, transform, explore and visualize the data
+
 **Import Data**
 
 ```{r import csv}
 raw_data <- read_csv("data/sample_data.csv")
 glimpse(raw_data)
 ```
+* Glimpse of the imported raw csv data
 
 **Summary Statistics**
 
@@ -95,7 +96,7 @@ glimpse(raw_data)
 st(raw_data)
 ```
 
-**Mutate Date and Traver Value Group**
+**Data Wrangling - Date & Traveler Value Group**
 
 ```{r mutate date}
 raw_data$event_wday <- wday(raw_data$event_date,
@@ -125,6 +126,10 @@ raw_data$traveler_value_group <- factor(raw_data$traveler_value_group, order = T
 
 glimpse(raw_data)
 ```
+
+* Added event_wday, event_year, event_mday, checkin_wday, checkin_year, checkin_month attribues for a better understanding of total_number_events according to dates.
+
+* Transformed traveler_value_group into ordinal modeling type according to ascending order of Low, Med, and High.
 
 **Event Year EDA**
 
@@ -180,6 +185,7 @@ DT::datatable(data = event_year_data,
   formatRound('event_year_sum', digits = 0) %>%
   formatPercentage('pct_total', 2)
 ```
+* More than a third of the events were from 2019 and less than a quarter are from 2020
 
 **Event Month Day EDA**
 
@@ -243,6 +249,9 @@ DT::datatable(data = event_mday_data,
   formatPercentage('diff_pct', 2)
 ```
 
+* Based on day on day comparison, 2019 saw some dips on certain dates like Jan 05, Jan 12, etc.
+* 2020 also exhibits certain dips on total events like Jan 10, Jan 17, etc.
+
 **Event Weekday EDA**
 
 ```{r event wday EDA}
@@ -298,12 +307,11 @@ DT::datatable(data = event_wday_data,
   formatPercentage('pct_diff', 2)
 ```
 
+* Viewing from a day of the week, there are less total events on Saturday and Sunday for 2019 while it is fairly consistent throughout the week with minimal fluctuations for 2020.
+
 **Activity Group EDA**
 
 ```{r activity group EDA}
-
-color_book   <- "purple"
-color_search <- "darkgray"
 
 activity_data <- raw_data %>%
   group_by(activity_group) %>%
@@ -313,7 +321,7 @@ activity_total <- activity_data %>%
   plot_ly(x=~activity_group,
           y=~activity_sum,
           type= 'bar',
-          marker = list(color = c(color_book,color_search)),
+          marker = list(color = c(color_2021,color_2019)),
           hovertemplate = paste('Activity Group: %{x}<br>',
                                 'Total Number of Events: %{y}',
                                 '<extra></extra>')) %>%
@@ -338,6 +346,11 @@ DT::datatable(data = activity_data,
   formatRound('activity_sum', digits = 0) %>%
   formatPercentage('pct_total', 2)
 ```
+
+* From the total number of events, only less  than 8% are doing actual reservation. It would be interesting to see what the are the factors that affect the conversion from 'Searching' to 'Booking'.
+
+* An 'conversion' attribute can be use as a target variable for a prediction model.
+
 
 **Reason for Travel Detailed EDA**
 
@@ -382,6 +395,10 @@ DT::datatable(data = reason_travel_data,
   formatPercentage('pct_total', 2)
 ```
 
+* Almost 95% of the total events are from Leisure - Non-Family and Business. Although Leisure - Family accounts for more than 5%, it would be good to know the spending patterns.
+
+* Intuitively, leisure travel consisting of 3 or more people for Leisure-Family category will spend more in the hotel services like rooms and food than Leisure - Non-Family and Business.
+
 
 **Origin Country Code**
 
@@ -397,7 +414,7 @@ origin_country_total <- origin_country_data %>%
   plot_ly(x=~origin_country_sum,
           y=~reorder(origin_country_code,origin_country_sum),
           type= 'bar',
-          marker = list(color = color_book),
+          marker = list(color = color_2021),
           hovertemplate = paste('Origin Country: %{y}<br>',
                                 'Total Number of Events: %{x}',
                                 '<extra></extra>')) %>%
@@ -414,7 +431,7 @@ origin_country_total
 origin_country_data$pct_total <- prop.table(origin_country_data$origin_country_sum)
 
 DT::datatable(data = origin_country_data,
-              options = list(pageLength = 20),
+              options = list(pageLength = 10),
               colnames = c("Origin Country Code", "Total Number of Events", "Percent of Total"),
               #rownames = FALSE,
               filter = "none",
@@ -423,6 +440,8 @@ DT::datatable(data = origin_country_data,
   formatPercentage('pct_total', 2)
 ```
 
+* The top 5 origin country contributes to more than 92% of the total events exceeding the 80/20 Pareto principle.
+ 
 **Hotel City**
 
 ```{r hotel city EDA}
@@ -437,7 +456,7 @@ hotel_city_total <- hotel_city_data %>%
   plot_ly(x=~hotel_city_sum,
           y=~reorder(hotel_city,hotel_city_sum),
           type= 'bar',
-          marker = list(color = color_book),
+          marker = list(color = color_2021),
           hovertemplate = paste('Hotel City: %{y}<br>',
                                 'Total Number of Events: %{x}',
                                 '<extra></extra>')) %>%
@@ -454,7 +473,7 @@ hotel_city_total
 hotel_city_data$pct_total <- prop.table(hotel_city_data$hotel_city_sum)
 
 DT::datatable(data = hotel_city_data,
-              options = list(pageLength = 37),
+              options = list(pageLength = 10),
               colnames = c("Hotel City", "Total Number of Events", "Percent of Total"),
               #rownames = FALSE,
               filter = "none",
@@ -476,7 +495,7 @@ hotel_state_total <- hotel_state_data %>%
   plot_ly(x=~hotel_state_sum,
           y=~reorder(hotel_state,hotel_state_sum),
           type= 'bar',
-          marker = list(color = color_book),
+          marker = list(color = color_2021),
           hovertemplate = paste('Hotel State: %{y}<br>',
                                 'Total Number of Events: %{x}',
                                 '<extra></extra>')) %>%
@@ -493,7 +512,7 @@ hotel_state_total
 hotel_state_data$pct_total <- prop.table(hotel_state_data$hotel_state_sum)
 
 DT::datatable(data = hotel_state_data,
-              options = list(pageLength = 20),
+              options = list(pageLength = 10),
               colnames = c("Hotel State", "Total Number of Events", "Percent of Total"),
               #rownames = FALSE,
               filter = "none",
@@ -515,7 +534,7 @@ hotel_country_total <- hotel_country_data %>%
   plot_ly(x=~hotel_country_sum,
           y=~reorder(hotel_country,hotel_country_sum),
           type= 'bar',
-          marker = list(color = color_book),
+          marker = list(color = color_2021),
           hovertemplate = paste('Hotel Country: %{y}<br>',
                                 'Total Number of Events: %{x}',
                                 '<extra></extra>')) %>%
@@ -533,7 +552,7 @@ hotel_country_total
 hotel_country_data$pct_total <- prop.table(hotel_country_data$hotel_country_sum)
 
 DT::datatable(data = hotel_country_data,
-              options = list(pageLength = 20),
+              options = list(pageLength = 10),
               colnames = c("Hotel Country", "Total Number of Events", "Percent of Total"),
               #rownames = FALSE,
               filter = "none",
@@ -541,6 +560,10 @@ DT::datatable(data = hotel_country_data,
   formatRound('hotel_country_sum', digits = 0) %>%
   formatPercentage('pct_total', 2)
 ```
+
+* London, GB accounts to almost 20% of the total number of events
+
+* As noted in the Data Dictionary, hotel_city, hotel_state, and hotel_country	are raw data from the source systems and requires data cleaning to be useable.
 
 
 **Traveler Value Group EDA**
@@ -585,6 +608,10 @@ DT::datatable(data = traveler_value_data,
   formatRound('traveler_value_sum', digits = 0) %>%
   formatPercentage('pct_total', 2)
 ```
+
+* Similar to reason_for_travel_detailed, it would be good to know the spending patterns of different Traveler Value Group.
+
+* Intuitively, "High" will spend more in the hotel services like rooms, food, and loyalty. Therefore, they require the best quality of customer care.
 
 
 **Checkin Year EDA**
@@ -661,30 +688,10 @@ DT::datatable(data = checkin_month_data,
   formatPercentage('pct_total', 2)
 ```
 
+* Most of the checkins are from 2019 and January. The data also show that there is a decreasing trend towards the end of the year. Probably, it would be good to have some promotions during the 3rd and 4th quarter to increase the number of events.
+
 
 **Total Number of Events Histogram**
-
-
-```{r total event boxplot}
-
-total_event_bp <- raw_data %>%
-  select(total_number_events) %>%
-  plot_ly(y=~total_number_events,
-          type= 'box',
-          boxpoints = "all",
-          jitter = 0.3,
-          marker = list(color = color_2019),
-          line = list(color = color_2019),
-          fillcolor  = list(color = color_2019),
-          name = "All Points") %>%
-  layout(title = "Total Number of Easdfvents Boxplot",
-         xaxis = list(title = ""),
-         yaxis = list(title = "Total Number of Events"),
-         hoverlabel=list(bgcolor=color_bg))
-
-total_event_bp
-```
-
 
 ```{r total event hist}
 
@@ -710,12 +717,35 @@ total_event_hist <- total_event_data %>%
 total_event_hist
 ```
 
+
+```{r total event boxplot}
+
+total_event_bp <- raw_data %>%
+  select(total_number_events) %>%
+  plot_ly(y= ~total_number_events,
+          type= 'box',
+          name = "Suspected Outliers",
+          boxpoints = 'suspectedoutliers',
+          marker = list(color = color_2021,
+                        outliercolor = color_2019,
+                        line = list(outliercolor = color_2019,
+                                    outlierwidth = 5)),
+          line = list(color = color_2021)) %>%
+  layout(title = "Total Number of Events Boxplot",
+         xaxis = list(title = ""),
+         yaxis = list(title = "Total Number of Events"),
+         hoverlabel=list(bgcolor=color_bg))
+
+total_event_bp
+```
+
+
 ```{r total event table}
 
 total_event_data$pct_total <- prop.table(total_event_data$count)
 
 DT::datatable(data = total_event_data,
-              options = list(pageLength = 20),
+              options = list(pageLength = 10),
               colnames = c("Total Number of Events", "Count", "Percent of Total"),
               #rownames = FALSE,
               filter = "none",
@@ -725,18 +755,415 @@ DT::datatable(data = total_event_data,
 ```
 
 
-### 2.2 Data Preparation
+* Looking at the histogram, boxplot and table, there are extreme outliers like the maximum value of 390 total number of events.
 
-Distill is a publication format for scientific and technical writing, native to the web.
+* This may suggest that there are some issues with the data acquisition or incorrect data entries.
 
-### 2.3 Data Visualisation
+### 1.3 Data Cleaning
 
-Distill is a publication format for scientific and technical writing, native to the web.
+**Clean Hotel City**
 
-## 3. Derived Insights
+```{r clean hotel city}
 
-Distill is a publication format for scientific and technical writing, native to the web.
+clean_data <- raw_data
 
-## 4. Recommendations
+#Replace Hotel City
+clean_data <- clean_data %>%
+  mutate(hotel_city = ifelse(str_detect(hotel_city, "dusseldorf"), "duesseldorf", hotel_city)) %>%
+  mutate(hotel_city = ifelse(str_detect(hotel_city, "firenze"), "florence", hotel_city)) %>%
+  mutate(hotel_city = ifelse(str_detect(hotel_city, "kln"), "koeln", hotel_city)) %>%
+  mutate(hotel_city = ifelse(str_detect(hotel_city, "mnchen"), "munich", hotel_city)) %>%
+  mutate(hotel_city = ifelse(str_detect(hotel_city, "seville"), "sevilla", hotel_city)) %>%
+  mutate(hotel_city = ifelse(str_detect(hotel_city, "venezia"), "venice", hotel_city))
 
-Distill is a publication format for scientific and technical writing, native to the web.
+
+hotel_city_clean_data <- clean_data %>%
+  group_by(hotel_city) %>%
+  summarise(hotel_city_sum = sum(total_number_events)) %>%
+  arrange(desc(hotel_city_sum))
+
+hotel_city_clean_data$pct_total <- prop.table(hotel_city_clean_data$hotel_city_sum)
+
+DT::datatable(data = hotel_city_clean_data,
+              options = list(pageLength = 10),
+              colnames = c("Hotel City", "Total Number of Events", "Percent of Total"),
+              #rownames = FALSE,
+              filter = "none",
+              autoHideNavigation = TRUE) %>%
+  formatRound('hotel_city_sum', digits = 0) %>%
+  formatPercentage('pct_total', 2)
+```
+
+* Merged the following cities:
+  + dusseldorf -> duesseldorf
+  + firenze -> florence
+  + kln -> koeln
+  + mnchen -> munich
+  + seville -> sevilla
+  + venezia -> venice
+
+
+**Clean Hotel Country**
+
+```{r clean hotel country}
+
+#Replace Hotel Country
+clean_data <- clean_data %>%
+  mutate(hotel_country = ifelse(str_detect(hotel_country, "alemania"), "de", hotel_country)) %>%
+  mutate(hotel_country = ifelse(str_detect(hotel_country, "allemagne"), "de", hotel_country)) %>%
+  mutate(hotel_country = ifelse(str_detect(hotel_country, "germania"), "de", hotel_country)) %>%
+  mutate(hotel_country = ifelse(str_detect(hotel_country, "espaa"), "es", hotel_country)) %>%
+  mutate(hotel_country = ifelse(str_detect(hotel_country, "catalunya"), "es", hotel_country)) %>%
+  mutate(hotel_country = ifelse(str_detect(hotel_country, "gran bretaa"), "gb", hotel_country)) %>%
+  mutate(hotel_country = ifelse(str_detect(hotel_country, "gran bretagna"), "gb", hotel_country)) %>%
+  mutate(hotel_country = ifelse(str_detect(hotel_country, "grande bretagne"), "gb", hotel_country)) %>%
+  mutate(hotel_country = ifelse(str_detect(hotel_country, "grobritannien"), "gb", hotel_country)) %>%
+  mutate(hotel_country = ifelse(str_detect(hotel_country, "regno unito"), "gb", hotel_country)) %>%    
+  mutate(hotel_country = ifelse(str_detect(hotel_country, "reino unido"), "gb", hotel_country)) %>%
+  mutate(hotel_country = ifelse(str_detect(hotel_country, "royaume-uni"), "gb", hotel_country)) %>%
+  mutate(hotel_country = ifelse(str_detect(hotel_country, "sct"), "gb", hotel_country)) %>%      
+  mutate(hotel_country = ifelse(str_detect(hotel_country, "on"), "gb", hotel_country)) %>%   #london
+  mutate(hotel_country = ifelse(str_detect(hotel_country, "ns"), "gb", hotel_country)) %>%   #liverpool
+  mutate(hotel_country = ifelse(str_detect(hotel_country, "jp"), "fr", hotel_country)) %>%   #bordeaux
+  mutate(hotel_country = ifelse(str_detect(hotel_country, "br"), "es", hotel_country)) %>%   #barcelona
+  mutate(hotel_country = ifelse(str_detect(hotel_country, "co"), "es", hotel_country)) #madrid
+
+hotel_country_clean_data <- clean_data %>%
+  group_by(hotel_country) %>%
+  summarise(hotel_country_sum = sum(total_number_events)) %>%
+  arrange(desc(hotel_country_sum))
+
+hotel_country_clean_data$pct_total <- prop.table(hotel_country_clean_data$hotel_country_sum)
+
+DT::datatable(data = hotel_country_clean_data,
+              options = list(pageLength = 11),
+              colnames = c("Hotel Country", "Total Number of Events", "Percent of Total"),
+              #rownames = FALSE,
+              filter = "none",
+              autoHideNavigation = TRUE) %>%
+  formatRound('hotel_country_sum', digits = 0) %>%
+  formatPercentage('pct_total', 2)
+```
+
+**Issues: **
+
+* Merged and renamed countries. However US, CA, AU, and RU are still incorrect (does not match correctly with hotel_city)
+
+* There are missing countries and (not set) entries
+
+* Assuming the hotel_city is correct, a better approach is to map the hotel_country from the hotel_city
+
+* Additionally, hotel_state is unusable because of 93.37% of the data are missing. If this attribute is needed, hotel_state can be mapped from the hotel_city
+
+
+**Final Clean Data**
+```{r final clean data}
+clean_data <- clean_data %>%
+  select(-c(hotel_state,hotel_country))
+
+glimpse(clean_data)
+
+write_csv(clean_data,"./data/clean_data.csv")
+```
+
+* For the final data to be used for analysis, hotel_state and hotel_country will be excluded since the final report only requires top destination per city.
+
+* Additionally, the outliers in the total_number_events and missing values from other fields will be kept as is. The analysis assumes that the data inputs are correct.
+
+## 2. Insights Discovery
+
+### 2.1 Booking
+
+```{r booking data, fig.height=10}
+booking_2019_data <- clean_data %>%
+  filter(activity_group == "Booking") %>%
+  filter(event_year == 2019) %>%
+  group_by(hotel_city) %>%
+  summarise(booking_2019_sum = sum(total_number_events))
+
+booking_2021_data <- clean_data %>%
+  filter(activity_group == "Booking") %>%
+  filter(event_year == 2021) %>%
+  group_by(hotel_city) %>%
+  summarise(booking_2021_sum = sum(total_number_events))
+
+booking_city_data <- left_join(booking_2019_data, booking_2021_data)
+
+booking_city_total <- booking_city_data %>%
+ plot_ly(x=~booking_2021_sum,
+         y=~reorder(hotel_city,booking_2021_sum),
+         type= 'bar',
+         marker = list(color = color_2021),
+         name = '2021',
+         hovertemplate = paste('Hotel City: %{y}<br>',
+                               '2021 Total Number of Events: %{x}',
+                               '<extra></extra>')) %>%
+  add_trace(x=~booking_2019_sum,
+            marker = list(color = color_2019),
+            name = '2019',
+            hovertemplate = paste('Hotel City: %{y}<br>',
+                               '2019 Total Number of Events: %{x}',
+                               '<extra></extra>')) %>%
+  layout(title = "Booking Top Destinations by City",
+         yaxis = list(title = ""),
+         xaxis = list(title = "Total Number of Events"),
+         hoverlabel=list(bgcolor=color_bg))
+
+booking_city_total
+```
+
+```{r booking change table, fig.height=10}
+booking_city_data$diff <- booking_city_data$booking_2021_sum - booking_city_data$booking_2019_sum
+booking_city_data$pct_diff <- booking_city_data$diff / booking_city_data$booking_2019_sum
+
+DT::datatable(data = booking_city_data %>%
+                arrange(desc(pct_diff)),
+              options = list(pageLength = 10),
+              colnames = c("Booking Destination by City", "2019 Total Events", "2021 Total Events", "Difference (Values)" ,"Difference (%)"),
+              rownames = FALSE,
+              filter = "none",
+              autoHideNavigation = TRUE) %>%
+  formatRound('booking_2019_sum', digits = 0) %>%
+  formatRound('booking_2021_sum', digits = 0) %>%
+  formatRound('diff', digits = 0) %>%
+  formatPercentage('pct_diff', 2)
+```
+
+```{r booking change, fig.height=8}
+booking_city_diff <- booking_city_data %>%
+ plot_ly(x=~pct_diff,
+         y=~reorder(hotel_city,pct_diff),
+         type= 'bar',
+         marker = list(color = color_2021),
+         hovertemplate = paste('Hotel City: %{y}<br>',
+                               '2021-2019 Difference(%): %{x}',
+                               '<extra></extra>')) %>%
+  layout(title = "Destinations by City Percentage Change (2021 vs. 2019)",
+         yaxis = list(title = ""),
+         xaxis = list(title = "Percentage Change(%)",tickformat = "%"),
+         hoverlabel=list(bgcolor=color_bg))
+
+booking_city_diff
+```
+
+```{r booking country}
+booking_country_2019_data <- clean_data %>%
+  filter(activity_group == "Booking") %>%
+  filter(event_year == 2019) %>%
+  group_by(origin_country_code) %>%
+  summarise(booking_country_2019_sum = sum(total_number_events))
+
+booking_country_2021_data <- clean_data %>%
+  filter(activity_group == "Booking") %>%
+  filter(event_year == 2021) %>%
+  group_by(origin_country_code) %>%
+  summarise(booking_country_2021_sum = sum(total_number_events))
+
+booking_country_data <- full_join(booking_country_2019_data, booking_country_2021_data)
+
+booking_country_total <- booking_country_data %>%
+  slice_head(n = 10) %>%
+  plot_ly(x=~booking_country_2021_sum,
+         y=~reorder(origin_country_code,booking_country_2021_sum),
+         type= 'bar',
+         marker = list(color = color_2021),
+         name = '2021',
+         hovertemplate = paste('Origin Country: %{y}<br>',
+                               '2021 Total Number of Events: %{x}',
+                               '<extra></extra>')) %>%
+  add_trace(x=~booking_country_2019_sum,
+            marker = list(color = color_2019),
+            name = '2019',
+            hovertemplate = paste('Origin Country: %{y}<br>',
+                               '2019 Total Number of Events: %{x}',
+                               '<extra></extra>')) %>%
+  layout(title = "Top 10 Origin Country",
+         yaxis = list(title = ""),
+         xaxis = list(title = "Total Number of Events"),
+         hoverlabel=list(bgcolor=color_bg))
+
+booking_country_total
+```
+
+
+```{r booking country table}
+booking_country_data$diff <- booking_country_data$booking_country_2021_sum - booking_country_data$booking_country_2019_sum
+booking_country_data$pct_diff <- booking_country_data$diff / booking_country_data$booking_country_2019_sum
+
+DT::datatable(data = booking_country_data %>%
+                arrange(desc(booking_country_2021_sum)),
+              options = list(pageLength = 10),
+              colnames = c("Booking Origin Country", "2019 Total Events", "2021 Total Events", "Difference (Values)" ,"Difference (%)"),
+              rownames = FALSE,
+              filter = "none",
+              autoHideNavigation = TRUE) %>%
+  formatRound('booking_country_2019_sum', digits = 0) %>%
+  formatRound('booking_country_2021_sum', digits = 0) %>%
+  formatRound('diff', digits = 0) %>%
+  formatPercentage('pct_diff', 2)
+```
+
+
+* In terms of percent change of activity (2021 vs 2019), only florence has positive growth of 203.92%. 
+
+* The rest of the destinations experienced negative percent change from venice (-29.69%) up to the worst hit cities which are leeds (-93.82%), frankfurt(-93.84%), koeln (-93.85%).
+
+* In terms of total number of events, birmingham has the highest events with 2,650 followed by london with 2,600. 
+
+* The bottom 3 destination cities have less than 100 events which are malaga with 83, cologne with 52, and palma de mallorca with a mere 38.
+
+* The top origin countries from which bookings were made are US, FR, GB, DE, and ES. 
+
+### 2.2 Searching
+
+```{r searching data, fig.height=10}
+searching_2019_data <- clean_data %>%
+  filter(activity_group == "Searching") %>%
+  filter(event_year == 2019) %>%
+  group_by(hotel_city) %>%
+  summarise(searching_2019_sum = sum(total_number_events))
+
+searching_2021_data <- clean_data %>%
+  filter(activity_group == "Searching") %>%
+  filter(event_year == 2021) %>%
+  group_by(hotel_city) %>%
+  summarise(searching_2021_sum = sum(total_number_events))
+
+searching_city_data <- left_join(searching_2019_data, searching_2021_data)
+
+searching_city_total <- searching_city_data %>%
+ plot_ly(x=~searching_2021_sum,
+         y=~reorder(hotel_city,searching_2021_sum),
+         type= 'bar',
+         marker = list(color = color_2021),
+         name = '2021',
+         hovertemplate = paste('Hotel City: %{y}<br>',
+                               '2021 Total Number of Events: %{x}',
+                               '<extra></extra>')) %>%
+  add_trace(x=~searching_2019_sum,
+            marker = list(color = color_2019),
+            name = '2019',
+            hovertemplate = paste('Hotel City: %{y}<br>',
+                               '2019 Total Number of Events: %{x}',
+                               '<extra></extra>')) %>%
+  layout(title = "Searching Top Destinations by City",
+         yaxis = list(title = ""),
+         xaxis = list(title = "Total Number of Events"),
+         hoverlabel=list(bgcolor=color_bg))
+
+searching_city_total
+```
+
+```{r searching change table, fig.height=10}
+searching_city_data$diff <- searching_city_data$searching_2021_sum - searching_city_data$searching_2019_sum
+searching_city_data$pct_diff <- searching_city_data$diff / searching_city_data$searching_2019_sum
+
+DT::datatable(data = searching_city_data %>%
+                arrange(desc(pct_diff)),
+              options = list(pageLength = 10),
+              colnames = c("Searching Destination by City", "2019 Total Events", "2021 Total Events", "Difference (Values)" ,"Difference (%)"),
+              rownames = FALSE,
+              filter = "none",
+              autoHideNavigation = TRUE) %>%
+  formatRound('searching_2019_sum', digits = 0) %>%
+  formatRound('searching_2021_sum', digits = 0) %>%
+  formatRound('diff', digits = 0) %>%
+  formatPercentage('pct_diff', 2)
+```
+
+```{r searching change, fig.height=8}
+searching_city_diff <- searching_city_data %>%
+ plot_ly(x=~pct_diff,
+         y=~reorder(hotel_city,pct_diff),
+         type= 'bar',
+         marker = list(color = color_2021),
+         hovertemplate = paste('Hotel City: %{y}<br>',
+                               '2021-2019 Difference(%): %{x}',
+                               '<extra></extra>')) %>%
+  layout(title = "Destinations by City Percentage Change (2021 vs. 2019)",
+         yaxis = list(title = ""),
+         xaxis = list(title = "Percentage Change(%)",tickformat = "%"),
+         hoverlabel=list(bgcolor=color_bg))
+
+searching_city_diff
+```
+
+
+```{r searching country}
+searching_country_2019_data <- clean_data %>%
+  filter(activity_group == "Searching") %>%
+  filter(event_year == 2019) %>%
+  group_by(origin_country_code) %>%
+  summarise(searching_country_2019_sum = sum(total_number_events))
+
+searching_country_2021_data <- clean_data %>%
+  filter(activity_group == "Searching") %>%
+  filter(event_year == 2021) %>%
+  group_by(origin_country_code) %>%
+  summarise(searching_country_2021_sum = sum(total_number_events))
+
+searching_country_data <- full_join(searching_country_2019_data, searching_country_2021_data)
+
+searching_country_total <- searching_country_data %>%
+  slice_head(n = 10) %>%
+  plot_ly(x=~searching_country_2021_sum,
+         y=~reorder(origin_country_code,searching_country_2021_sum),
+         type= 'bar',
+         marker = list(color = color_2021),
+         name = '2021',
+         hovertemplate = paste('Origin Country: %{y}<br>',
+                               '2021 Total Number of Events: %{x}',
+                               '<extra></extra>')) %>%
+  add_trace(x=~searching_country_2019_sum,
+            marker = list(color = color_2019),
+            name = '2019',
+            hovertemplate = paste('Origin Country: %{y}<br>',
+                               '2019 Total Number of Events: %{x}',
+                               '<extra></extra>')) %>%
+  layout(title = "Top 10 Origin Country",
+         yaxis = list(title = ""),
+         xaxis = list(title = "Total Number of Events"),
+         hoverlabel=list(bgcolor=color_bg))
+
+searching_country_total
+```
+
+```{r searching country table}
+searching_country_data$diff <- searching_country_data$searching_country_2021_sum - searching_country_data$searching_country_2019_sum
+searching_country_data$pct_diff <- searching_country_data$diff / searching_country_data$searching_country_2019_sum
+
+DT::datatable(data = searching_country_data %>%
+                arrange(desc(searching_country_2021_sum)),
+              options = list(pageLength = 10),
+              colnames = c("Booking Origin Country", "2019 Total Events", "2021 Total Events", "Difference (Values)" ,"Difference (%)"),
+              rownames = FALSE,
+              filter = "none",
+              autoHideNavigation = TRUE) %>%
+  formatRound('searching_country_2019_sum', digits = 0) %>%
+  formatRound('searching_country_2021_sum', digits = 0) %>%
+  formatRound('diff', digits = 0) %>%
+  formatPercentage('pct_diff', 2)
+```
+
+
+* In terms of percent change of activity (2021 vs 2019), florence, venince, and birmingham have positive percent change with values of 181.83%, 27.73% and 1.51% respectively.
+
+* The rest of the destinations experienced negative percent change from palma de mallorca	(-33.84%) up to the worst hit cities which are koeln (-92.54%) and leeds (-93.70%)
+
+* In terms of total number of events, london has the highest events with 54,812 and consistently at the top for 2019 and 2021.
+
+* The bottom 4 destination cities have less than 2000 events which are malaga (1,836), cologne (1,817), hannover (1,573), and leeds (1,210).
+
+* The top origin countries from which bookings were made are US, FR, GB, ES, and DE.
+
+## 3. Actionable Recommendations
+
+* Add new attribute like a flag to understand the factors that affect the conversion from ‘Searching’ to ‘Booking’. An ‘conversion’ attribute can be use as a target variable for a prediction model.
+
+* Add spending patterns information to know how 'Reason for Travel Detailed' and 'Traveler Value Group' contribute to the bottom line.
+
+* Add user demographics information, time of event, and campaigns used to advertise the hotel to better plan and invest marketing and operational resources.
+
+* Suggest to focus the marketing and operational resources to the top origin countries from which bookings were made such as US, FR, GB, DE, and ES. Additionally, may need to investigate why there are no bookings or ever search from US for 2019. This may be a data source issue.
+
+* Finally, aside from looking at the City Hotel, perform additional interactive visualization and data analysis to other attributes (reason_for_travel_detailed, traveler_value_group, and departure_checkin_date).
