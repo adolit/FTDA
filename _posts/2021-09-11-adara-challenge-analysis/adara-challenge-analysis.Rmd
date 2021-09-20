@@ -861,9 +861,9 @@ DT::datatable(data = hotel_country_clean_data,
 clean_data <- clean_data %>%
   select(-c(hotel_state,hotel_country))
 
-glimpse(clean_data)
-
 write_csv(clean_data,"./data/clean_data.csv")
+
+glimpse(clean_data)
 ```
 
 * For the final data to be used for analysis, hotel_state and hotel_country will be excluded since the final report only requires top destination per city.
@@ -1164,6 +1164,6 @@ DT::datatable(data = searching_country_data %>%
 
 * Add user demographics information, time of event, and campaigns used to advertise the hotel to better plan and invest marketing and operational resources.
 
-* Suggest to focus the marketing and operational resources to the top origin countries from which bookings were made such as US, FR, GB, DE, and ES. Additionally, may need to investigate why there are no bookings or ever search from US for 2019. This may be a data source issue.
+* Suggest to focus the marketing and operational resources to the top origin countries from which bookings were made such as US, FR, GB, DE, and ES. Additionally, may need to investigate why there are no bookings or even search from US for 2019. This may be a data source issue.
 
 * Finally, aside from looking at the City Hotel, perform additional interactive visualization and data analysis to other attributes (reason_for_travel_detailed, traveler_value_group, and departure_checkin_date).

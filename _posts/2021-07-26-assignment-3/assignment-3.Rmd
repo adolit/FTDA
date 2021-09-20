@@ -1,0 +1,310 @@
+---
+title: "Visual Detective Assignment Part 3"
+description: |
+  This assignment attempts to solve the 2021 IEEE Visual Analytics Science and Technology (VAST) Challenge: Mini-Challenge 2 by applying different visual analytics concepts, methods, and techniques with relevant R data visualisation and data analysis packages.
+
+preview: img/preview_image.png  
+author:
+  - name: Archie Dolit
+    url: https://www.linkedin.com/in/adolit/
+    affiliation: School of Computing and Information Systems, Singapore Management University
+date: 07-25-2021
+output:
+  distill::distill_article:
+    self_contained: false
+    toc: true
+    toc_depth: 3
+categories:
+  - Visual Detective
+  - R
+  - Assignment
+---
+
+```{r setup, include=FALSE}
+options(htmltools.dir.version = FALSE)
+knitr::opts_chunk$set(fig.retina=3,
+                      echo = TRUE,
+                      eval = TRUE,
+                      message = FALSE,
+                      warning = FALSE)
+```
+
+```{r r package, echo = FALSE}
+packages = c('ggiraph', 'plotly','lobstr',
+             'raster','sf', 'tmap', 
+             'igraph', 'tidygraph', 
+             'ggraph', 'visNetwork', 
+             'lubridate', 'clock',
+             'widyr', 'wordcloud',
+             'ggwordcloud', 'DT',
+             'textplot', 'hms',
+             'timetk','tidyverse')
+
+for(p in packages){
+  if(!require(p, character.only = T)){
+    install.packages(p)
+  }
+  library(p, character.only = T)
+}
+```
+
+```{r import csv, echo = FALSE}
+car_data <- read_csv("data/aspatial/car-assignments.csv")
+cc_data <- read_csv("data/aspatial/cc_data.csv")
+loyalty_data <- read_csv("data/aspatial/loyalty_data.csv")
+gps_data <- read_csv("data/aspatial/gps.csv")
+```
+
+```{r bgmap, echo = FALSE}
+bgmap <- raster("data/Geospatial/abila_map.tif")
+# 
+# tm_shape(bgmap) +
+# tm_rgb(bgmap, r = 1,g = 2,b = 3,
+#        alpha = NA,
+#        saturation = 1,
+#        interpolate = TRUE,
+#        max.value = 255)
+```
+
+```{r prep car, echo = FALSE}
+car_data <- car_data %>%
+  #concatenate first and last name
+  mutate(FullName = paste(FirstName, LastName, sep = " ")) %>%
+  rename(Deparment = CurrentEmploymentType) %>%
+  rename(Title = CurrentEmploymentTitle)
+
+car_data$CarID <- as_factor(car_data$CarID)
+```
+
+```{r prep cc, echo = FALSE}
+
+#detect and replace Katerina to Katerina's Cafe
+cc_data <- cc_data %>%
+    mutate(location = ifelse(str_detect(location, "Katerina"), "Katerina's Cafe", location))
+
+#convert to date-time format
+cc_data$date <- date_time_parse(cc_data$timestamp,
+                zone = "",
+                format = "%m/%d/%Y")
+cc_data$day <- wday(cc_data$date,
+                          label = TRUE,
+                          abbr = TRUE)
+
+cc_data$timestamp <- date_time_parse(cc_data$timestamp,
+                zone = "",
+                format = "%m/%d/%Y %H:%M")
+
+cc_data$hour <- get_hour(cc_data$timestamp)
+```
+
+```{r prep loyal, echo = FALSE}
+
+#detect and replace Katerina to Katerina's Cafe
+loyalty_data <- loyalty_data %>%
+    mutate(location = ifelse(str_detect(location, "Katerina"), "Katerina's Cafe", location))
+
+#convert to date-time format
+loyalty_data$date <- date_time_parse(loyalty_data$timestamp,
+                zone = "",
+                format = "%m/%d/%Y")
+
+loyalty_data$timestamp <- date_time_parse(loyalty_data$timestamp,
+                zone = "",
+                format = "%m/%d/%Y")
+
+loyalty_data$day <- wday(loyalty_data$timestamp,
+                          label = TRUE,
+                          abbr = TRUE)
+```
+
+```{r prep gps, echo = FALSE}
+
+#rename columns for consistency
+gps_data <- gps_data %>%
+  rename(timestamp = Timestamp) %>%
+  rename(CarID = id)
+
+#convert to date-time format
+gps_data$date <- date_time_parse(gps_data$timestamp,
+                zone = "",
+                format = "%m/%d/%Y")
+
+gps_data$day <- as.factor(wday(gps_data$date,
+                          label = TRUE,
+                          abbr = TRUE))
+
+gps_data$timestamp <- date_time_parse(gps_data$timestamp,
+                zone = "",
+                format = "%m/%d/%Y %H:%M:%S")
+
+gps_data$hour <- get_hour(gps_data$timestamp)
+
+#convert to factor data type
+gps_data$CarID <- as_factor(gps_data$CarID)
+
+#convert to simple feature 
+gps_sf <- st_as_sf(gps_data, 
+                   coords = c("long", "lat"),
+                       crs= 4326)
+```
+
+```{r join cc_loyal, echo = FALSE}
+
+#combine based on date, location, price, exclude day and timestamp
+cc_loyalty_data <- full_join(cc_data %>% select(-c("day")),
+                             loyalty_data %>% select(-c("day","timestamp")), 
+                             by = c("date" = "date", 
+                                    "location" = "location", 
+                                    "price" = "price"))
+
+#get day of the joint data
+cc_loyalty_data$day <- wday(cc_loyalty_data$date,
+                          label = TRUE,
+                          abbr = TRUE)
+
+#rearrange columns
+cc_loyalty_data <- cc_loyalty_data %>%
+  select("timestamp", "date", "day", "hour", "location", "price", "last4ccnum", "loyaltynum")
+```
+
+```{r join car_gps, echo = FALSE}
+
+#combine based on CarID
+car_gps_data <- left_join(gps_data, 
+                          car_data %>% select(-c("FirstName", "LastName")),
+                          by = "CarID")
+
+car_gps_sf <- left_join(gps_sf,
+                        car_data %>% select(-c("FirstName", "LastName")),
+                        by = "CarID")
+```
+
+# 4. Proposed Solutions
+
+## Q3: Owners of Credit Card and Loyalty Card
+
+
+**Can you infer the owners of each credit card and loyalty card? What is your evidence? Where are there uncertainties in your method? Where are there uncertainties in the data?**
+
+It is challenging to infer the owners of the credit card and loyalty card since there is no data field to join the credit card and gps data. 
+
+One possible approach to plot the gps path and check it against timestamp of the credit card transactions. 
+This approach assumes that the person driving the car is the same person making the credit card transaction.
+Additionally, it assumes that the gps coordinates, timestamp as well as the credit location and timestamp are accurate.
+
+To implement this proposed approach, it assumes the geospatial tracking software installed in the employees car will stop tracking if the vehicle is not moving.
+Borrowing from concept of 'Point of Interest' (POI) from Virginia Tech, POI is identified if the employee stops for more than 5 minutes.
+
+
+Identify the POIs by computing the difference of gps timestamp. If the difference is greater than 5 minutes, it will be set to poi = TRUE.
+
+```{r q3 poi}
+gps_poi_sf <- car_gps_sf %>%
+  group_by(CarID) %>%
+  mutate(diff = timestamp - lag(timestamp, order_by=CarID)) %>%
+  mutate(poi = if_else(diff > 60*5,  TRUE, FALSE)) %>%
+  filter(poi == TRUE) %>%
+  ungroup() 
+
+glimpse(gps_poi_sf)
+```
+
+
+Plot the POIs on the backgroup tourist map and identity the employee locations.
+From the  _Combined Credit Card & Loyalty Transactions by Hour of Day_ heatmap of Question 1, the earliest transaction is around 3:00 AM from Kronos Mart while the last transaction is 10:00 PM from Hippokampos. This information can be used to limit the number of POIs.
+
+
+```{r q3 poi points, fig.height=40}
+gps_poi_points <- gps_poi_sf %>%
+  filter(hour >= 2 & hour <= 23) %>%
+  select(timestamp,
+         CarID,
+         Deparment,
+         Title,
+         FullName)
+
+tmap_mode("plot")
+tm_shape(bgmap) +
+  tm_rgb(bgmap, r = 1,g = 2,b = 3,
+       alpha = NA,
+       saturation = 1,
+       interpolate = TRUE,
+       max.value = 255) +
+  tm_shape(gps_poi_points) +
+  tm_dots(col = 'red', border.col = 'black', size = 1, alpha = 0.5, jitter = .8) +
+  tm_facets(by = "FullName", ncol = 2)
+```
+
+
+Alternatively, plot the gps path of each employee.
+
+
+```{r q3 gps path, fig.height=40}
+gps_path <- car_gps_sf %>%
+  group_by(CarID) %>%
+  summarize(m = mean(timestamp),
+            do_union=FALSE) %>%
+  st_cast("LINESTRING")
+
+tmap_mode("plot")
+tm_shape(bgmap) +
+  tm_rgb(bgmap, r = 1,g = 2,b = 3,
+       alpha = NA,
+       saturation = 1,
+       interpolate = TRUE,
+       max.value = 255) +
+  tm_shape(gps_path) +
+  tm_lines() +
+  tm_facets(by = "CarID",  ncol = 2)
+```
+
+
+
+Create an interactive data table based on the joint credit card and infer the owner based on the POI plot.
+
+
+```{r q3 table cc data}
+
+cc_owner <- cc_data %>%
+  select(timestamp, location, last4ccnum)
+
+DT::datatable(cc_owner)
+```
+
+Finally, manually map the credit card transaction purchases timestamp against the POI map. This approach is very time consuming since it entails manual effort.
+As for most cases, the POI map may show certain points around the vicinity of the location but does not have any corresponding credit card purchases.
+
+
+The owner of the loyalty card will be known after the credit card owner has been identified. 
+As noted earlier, there is no one-to-one correspondence between the credit and loyalty card. 
+
+The heatmap below visualizes the number of transactions between specific credit card and loyalty card to know the highest likelihood of the loyalty card owner.
+
+```{r count cc loyal,fig.height=8}
+cc_loyal_count <- cc_loyalty_data %>%
+  group_by(last4ccnum,loyaltynum) %>%
+  summarise(count=n())
+  
+cc_loyal_correlate <- ggplot(data = cc_loyal_count,
+                               aes(x=loyaltynum, y=as.factor(last4ccnum),
+                                   fill = count,
+                                   text = paste("Last 4 Credit Card Number :", last4ccnum,"\n",
+                                                "Loyalty Card Number:", loyaltynum,"\n",
+                                                "Number of transactions :", count))) +
+  geom_tile()+
+  scale_fill_gradient(low = "lightsteelblue1", high = "royalblue4") +
+  ggtitle("Correlation of Credit Card & Loyalty Card by Number of Transactions") +
+  labs(x = "Loyalty Card Number",y = "Credit Card Number") + 
+  theme_minimal() + 
+  theme(axis.text.x = element_text(angle = 90))
+
+ggplotly(cc_loyal_correlate, tooltip = "text")
+```
+
+From the heatmap, it can seen that certain combination of credit card number and loyalty card are most often used together.
+Example of which are _6901 and L9363_ with 28 transactions; _7117 and L6417_ also with 28 transactions.
+
+Nevertheless, even for credit card 6901, there are still _9 transactions_ when loyalty card was not used.
+Similarly, credit card 7117 has _3 transactions_ when loyalty card was not used.
+
+Click [**HERE**](https://adolit-vaa.netlify.app/posts/2021-07-26-assignment-4/) to view the _Visual Detective Assignment Part 4_.

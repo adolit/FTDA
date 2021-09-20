@@ -1,0 +1,422 @@
+---
+title: "Visual Detective Assignment Part 2"
+description: |
+  This assignment attempts to solve the 2021 IEEE Visual Analytics Science and Technology (VAST) Challenge: Mini-Challenge 2 by applying different visual analytics concepts, methods, and techniques with relevant R data visualisation and data analysis packages.
+
+preview: img/preview_image.png  
+author:
+  - name: Archie Dolit
+    url: https://www.linkedin.com/in/adolit/
+    affiliation: School of Computing and Information Systems, Singapore Management University
+date: 07-25-2021
+output:
+  distill::distill_article:
+    self_contained: false
+    toc: true
+    toc_depth: 3
+categories:
+  - Visual Detective
+  - R
+  - Assignment
+---
+
+```{r setup, include=FALSE}
+options(htmltools.dir.version = FALSE)
+knitr::opts_chunk$set(fig.retina=3,
+                      echo = TRUE,
+                      eval = TRUE,
+                      message = FALSE,
+                      warning = FALSE)
+```
+
+```{r r package, echo = FALSE}
+packages = c('ggiraph', 'plotly','lobstr',
+             'raster','sf', 'tmap', 
+             'igraph', 'tidygraph', 
+             'ggraph', 'visNetwork', 
+             'lubridate', 'clock',
+             'widyr', 'wordcloud',
+             'ggwordcloud', 'DT',
+             'textplot', 'hms',
+             'timetk','tidyverse')
+
+for(p in packages){
+  if(!require(p, character.only = T)){
+    install.packages(p)
+  }
+  library(p, character.only = T)
+}
+```
+
+```{r import csv, echo = FALSE}
+car_data <- read_csv("data/aspatial/car-assignments.csv")
+cc_data <- read_csv("data/aspatial/cc_data.csv")
+loyalty_data <- read_csv("data/aspatial/loyalty_data.csv")
+gps_data <- read_csv("data/aspatial/gps.csv")
+```
+
+```{r bgmap, echo = FALSE}
+bgmap <- raster("data/Geospatial/abila_map.tif")
+# 
+# tm_shape(bgmap) +
+# tm_rgb(bgmap, r = 1,g = 2,b = 3,
+#        alpha = NA,
+#        saturation = 1,
+#        interpolate = TRUE,
+#        max.value = 255)
+```
+
+```{r prep car, echo = FALSE}
+car_data <- car_data %>%
+  #concatenate first and last name
+  mutate(FullName = paste(FirstName, LastName, sep = " ")) %>%
+  rename(Deparment = CurrentEmploymentType) %>%
+  rename(Title = CurrentEmploymentTitle)
+
+car_data$CarID <- as_factor(car_data$CarID)
+```
+
+```{r prep cc, echo = FALSE}
+
+#detect and replace Katerina to Katerina's Cafe
+cc_data <- cc_data %>%
+    mutate(location = ifelse(str_detect(location, "Katerina"), "Katerina's Cafe", location))
+
+#convert to date-time format
+cc_data$date <- date_time_parse(cc_data$timestamp,
+                zone = "",
+                format = "%m/%d/%Y")
+cc_data$day <- wday(cc_data$date,
+                          label = TRUE,
+                          abbr = TRUE)
+
+cc_data$timestamp <- date_time_parse(cc_data$timestamp,
+                zone = "",
+                format = "%m/%d/%Y %H:%M")
+
+cc_data$hour <- get_hour(cc_data$timestamp)
+```
+
+```{r prep loyal, echo = FALSE}
+
+#detect and replace Katerina to Katerina's Cafe
+loyalty_data <- loyalty_data %>%
+    mutate(location = ifelse(str_detect(location, "Katerina"), "Katerina's Cafe", location))
+
+#convert to date-time format
+loyalty_data$date <- date_time_parse(loyalty_data$timestamp,
+                zone = "",
+                format = "%m/%d/%Y")
+
+loyalty_data$timestamp <- date_time_parse(loyalty_data$timestamp,
+                zone = "",
+                format = "%m/%d/%Y")
+
+loyalty_data$day <- wday(loyalty_data$timestamp,
+                          label = TRUE,
+                          abbr = TRUE)
+```
+
+```{r prep gps, echo = FALSE}
+
+#rename columns for consistency
+gps_data <- gps_data %>%
+  rename(timestamp = Timestamp) %>%
+  rename(CarID = id)
+
+#convert to date-time format
+gps_data$date <- date_time_parse(gps_data$timestamp,
+                zone = "",
+                format = "%m/%d/%Y")
+
+gps_data$day <- as.factor(wday(gps_data$date,
+                          label = TRUE,
+                          abbr = TRUE))
+
+gps_data$timestamp <- date_time_parse(gps_data$timestamp,
+                zone = "",
+                format = "%m/%d/%Y %H:%M:%S")
+
+gps_data$hour <- get_hour(gps_data$timestamp)
+
+#convert to factor data type
+gps_data$CarID <- as_factor(gps_data$CarID)
+
+#convert to simple feature 
+gps_sf <- st_as_sf(gps_data, 
+                   coords = c("long", "lat"),
+                       crs= 4326)
+```
+
+```{r join cc_loyal, echo = FALSE}
+
+#combine based on date, location, price, exclude day and timestamp
+cc_loyalty_data <- full_join(cc_data %>% select(-c("day")),
+                             loyalty_data %>% select(-c("day","timestamp")), 
+                             by = c("date" = "date", 
+                                    "location" = "location", 
+                                    "price" = "price"))
+
+#get day of the joint data
+cc_loyalty_data$day <- wday(cc_loyalty_data$date,
+                          label = TRUE,
+                          abbr = TRUE)
+
+#rearrange columns
+cc_loyalty_data <- cc_loyalty_data %>%
+  select("timestamp", "date", "day", "hour", "location", "price", "last4ccnum", "loyaltynum")
+```
+
+```{r join car_gps, echo = FALSE}
+
+#combine based on CarID
+car_gps_data <- left_join(gps_data, 
+                          car_data %>% select(-c("FirstName", "LastName")),
+                          by = "CarID")
+
+car_gps_sf <- left_join(gps_sf,
+                        car_data %>% select(-c("FirstName", "LastName")),
+                        by = "CarID")
+```
+
+# 4. Proposed Solutions
+
+## Q1: Most Popular Locations
+
+**Using just the credit and loyalty card data, identify the most popular locations, and when they are popular. What anomalies do you see? What corrections would you recommend to correct these anomalies?**
+
+Generate an interactive bar graph in descending order using _ggplot_ and _plotly_ to determine the most popular locations.
+
+```{r q1 popular, fig.height=8}
+popular_combine <- cc_loyalty_data %>%
+  group_by(location) %>%
+  summarize(total_count=n()) %>%
+  ggplot(aes(x=reorder(location, total_count),
+             y=total_count,
+             text = paste("Location :", location,"\n",
+                          "Number of transactions:", total_count))) +
+  geom_bar(stat="identity", fill = "royalblue4") +
+  ggtitle("Combined Credit Card & Loyalty Transactions") +
+  labs(x = "Locations", y = "Transaction Count") + 
+  coord_flip() +
+  theme_minimal()
+
+ggplotly(popular_combine, tooltip = "text")
+```
+
+Based on the combined combined credit card and loyalty data, the most popular location is _Katerina's Cafe_ with a total of 256 transactions, followed by _Hippokampos_ with 213 transactions and _Guy's Gyro_ with 187 transactions.
+
+
+Generate an interactive heatmap using _ggplot_ and _plotly_ to determine the date and time when employees visit the locations.
+
+```{r q1 popular date, fig.height=8}
+day_location_count <- cc_loyalty_data %>%
+  count(location, day) %>%
+  rename(count = n)
+
+popular_day_location <- ggplot(data = day_location_count,
+                               aes(x=day, y=reorder(location, desc(location)),
+                                   fill = count,
+                                   text = paste("Location :", location,"\n",
+                                                "Day of week:", day,"\n",
+                                                "Number of transactions :", count))) +
+  geom_tile()+
+  scale_fill_gradient(low = "lightsteelblue1", high = "royalblue4") +
+  ggtitle("Combined Credit Card & Loyalty Transactions by Day") +
+  labs(x = "Day of the Week",y = "Locations") + 
+  theme_minimal()
+
+ggplotly(popular_day_location, tooltip = "text")
+```
+
+Based on the combined combined credit card and loyalty data, _Brew've Been Served_ is popular on weekdays, Monday to Friday, with no transactions on weekend. Probably this location is only open weekday.
+
+_Guy's Gyro, Hippokampos, and Katerina's Cafe_ are very popular throughout the week, Sunday to Monday.
+_Katerina's Cafe_ is the most popular location on Saturday with a total of 42 transactions.
+
+Some of the interesting transactions are _U-Pump_ with 2 transactions only on Monday and _Desafio Golf Course_ with only 9 transactions only on Sunday.
+
+
+```{r q1 popular time, fig.height=8}
+hour_location_count <- cc_loyalty_data %>%
+  count(location, hour) %>%
+  rename(count = n)
+  
+popular_hour_location <- ggplot(data = hour_location_count,
+                               aes(x=hour, y=reorder(location, desc(location)),
+                                   fill = count,
+                                   text = paste("Location :", location,"\n",
+                                                "Hour of the Day:", hour,"\n",
+                                                "Number of transactions :", count))) +
+  geom_tile()+
+  scale_fill_gradient(low = "lightsteelblue1", high = "royalblue4") +
+  ggtitle("Combined Credit Card & Loyalty Transactions by Hour of Day") +
+  labs(x = "Hour of the Day",y = "Locations") + 
+  theme_minimal()
+
+ggplotly(popular_hour_location, tooltip = "text")
+```
+
+Based on the time of transaction, _Brew've Been Served and Hallowed Grounds_ are popular in the morning around 7AM and 8AM. Most probably the employees visit the place before heading to the office.
+
+
+_Abila Zacharo, Bean There Done That, Brewed Awakenings, Gelatogalore, Guy's Gyro, Hippokampos, Jack's Magical Beans, Kalami Kafenion, Katerina's Kafe, and Ouzera Elian_ are popular during lunch break around 12NN to 1PM.
+
+_Guy's Gyro, Hippokampos, and  Katerina's Kafe_ are popular during dinner around 7PM and 8PM.
+_Katerina's Kafe_ has the highest transactions at 85 purchases at around 8PM.
+
+
+Generate an interactive boxplot using _plotly_ to determine the outliers and provide clues on some anomalies.
+
+```{r q1 outlier,  fig.height=8}
+outlier <- plot_ly(data = cc_loyalty_data,
+                   x = ~price,
+                   color = I("royalblue4"),
+                   alpha = 0.5,
+                   boxpoints = "suspectedoutliers") %>%
+  add_boxplot(y = ~reorder(location, desc(location))) %>%
+  layout(title = "Combined Credit Card & Loyalty Transactions Outliers",
+         yaxis = list(title = "Locations"),
+         xaxis = list(title = "Price"))
+
+outlier
+```
+
+Based on the price of transaction, it seems that there is unusual expensive purchase at _Frydos Autosupply n More_ amount to *10,000*.
+This is highly suspicious since the _mean price_ for this location is only *161.96* with third quartile value of approximately *250*.
+
+
+Generate an interactive linegraph using _plot_anomaly_diagnostics()_ of _plotly_ to diagnose anomalous points in the _cc_data_ purchase prices.
+Note that only locations with sufficient number of observations were selected for the anomaly diagnostics.
+
+```{r q1 anomaly,  fig.height=8}
+
+cc_data %>%
+  filter(location %in% c("Abila Airport",
+                         "Albert's Fine Clothing",
+                         "Carlyle Chemical Inc.",
+                         "Chostus Hotel",
+                         "Frydos Autosupply n' More",
+                         "Gelatogalore",
+                         "Nationwide Refinery",
+                         "Stewart and Sons Fabrication")) %>%
+  group_by(location) %>%
+  plot_anomaly_diagnostics(timestamp, price, 
+                           .facet_ncol = 2,
+                           .y_lab = "Price")
+```
+Based on the anomaly diagnostics, there are unusual purchases in _Gelatogalore, Frydos Autosupply n' More, Albert's Fine Clothing, and Chostus Hotel_.
+Again, the most expensive purchase is from _Frydos Autosupply n More_ amounting to **10,000 on 2014-01-13 19:20:00**.
+
+The anomalies will not be removed or corrected. It will be kept in the data since it may lead to more clues in solving the challenge.
+
+
+## Q2: Anomalies in Vehicle, Credit Card and Loyalty Card Data
+
+**Add the vehicle data to your analysis of the credit and loyalty card data. How does your assessment of the anomalies in question 1 change based on this new data? What discrepancies between vehicle, credit, and loyalty card data do you find?**
+
+
+Generate an interactive heatmap using _ggplot_ and _plotly_ based on the amount of transactions with missing _last4ccnum_.
+
+```{r q2 missing last4ccnum, fig.height=8}
+
+missing_last4ccnum <- cc_loyalty_data %>%
+   filter(is.na(last4ccnum)) 
+
+na_last4ccnum  <- ggplot(data = missing_last4ccnum,
+                         aes(x=date, y=reorder(location, desc(location)),
+                                   fill = price,
+                                   text = paste("Location :", location,"\n",
+                                                "Date:", date,"\n",
+                                                "Total Amount of Transaction:", price))) +
+  geom_tile()+
+  scale_fill_gradient(low = "lightsteelblue1", high = "royalblue4") +
+  ggtitle("Transactions with Missing Credit Card Data by Date") +
+  labs(x = "Date of Transaction", y = "Locations") +
+  theme_minimal()
+
+ggplotly(na_last4ccnum, tooltip = "text")
+```
+
+Based on the total amount of transactions with missing credit card, _National Refinery_ has a transaction on _2014-01-08_ with a price of _4367.63_.
+_Stewart and Sons Fabrication_ has a transaction on _2014-01-13_ with a price of _4071.95_ and another one on _2014-01-15_ with a price of _4485.38_.
+
+The discrepancies may be due to employees who bought the items with cash instead of credit card but still used the loyalty card to redeem points or rewards.
+
+
+Generate another interactive heatmap using _ggplot_ and _plotly_ based on the amount of transactions with missing _loyaltynum_.
+
+```{r q2 missing loyaltynum, fig.height=8}
+
+missing_loyaltynum <- cc_loyalty_data %>%
+   filter(is.na(loyaltynum))
+
+na_loyaltynum  <- ggplot(data = missing_loyaltynum,
+                         aes(x=date, y=reorder(location, desc(location)),
+                                   fill = price,
+                                   text = paste("Location :", location,"\n",
+                                                "Date:", timestamp,"\n",
+                                                "Total Amount of Transaction:", price))) +
+  geom_tile()+
+  scale_fill_gradient(low = "lightsteelblue1", high = "royalblue4") +
+  ggtitle("Transactions with Missing Loyalty Data by Date") +
+  labs(x = "Date of Transaction", y = "Locations") +
+  theme_minimal()
+
+ggplotly(na_loyaltynum, tooltip = "text")
+```
+
+Based on the total amount of transactions with missing loyalty card, _Frydos Autosupply n More_ has a transaction on _2014-01-13 19:20:00_ with a price of _10,000_.
+
+The discrepancy is more suspicious since the person who bought the items did not use his loyalty card which may imply possible misuse of the credit card when making the transaction.
+
+
+Add the gps and car data by creating a movement path from GPS points using the CarIDs as unique identifier.
+Filter the data around the time of transaction from _2014-01-13 19:00 to 21:00_.
+
+```{r q2 gps path 0113}
+gps_path_0113 <- car_gps_sf %>%
+  filter(timestamp >= "2014-01-13 19:00" & timestamp <= "2014-01-13 21:00") %>%
+  group_by(CarID, date) %>%
+  summarize(m = mean(timestamp), 
+            do_union=FALSE) %>%
+  st_cast("LINESTRING") 
+```
+
+
+Plot the gps path on the background tourist map and identity which CarIDs are within the vicinity of _Frydos Autosupply n More_.
+
+```{r q2 gps path 0113 1900}
+gps_path_selected_0113 <- gps_path_0113 %>%
+  filter(CarID %in% c("13" , "15", "16", "34")) 
+
+tmap_mode("plot")
+tm_shape(bgmap) +
+  tm_rgb(bgmap, r = 1,g = 2,b = 3,
+       alpha = NA,
+       saturation = 1,
+       interpolate = TRUE,
+       max.value = 255) +
+  tm_shape(gps_path_selected_0113) +
+  tm_lines() +
+  tm_facets(by = "CarID",  ncol = 4)
+```
+From the gps paths, CarID _"13" , "15", "16", "34"_ are within the vicinity of _Frydos Autosupply n More_ during suspicions transaction amounting to the price of _10,000_.
+
+
+Create an interactive data table based on the joint gps and car and filter the date to _2014-01-13_.
+
+```{r q2 gps table}
+car_gps_0113 <- car_gps_data %>%
+  filter(timestamp >= "2014-01-13 19:00" & timestamp <= "2014-01-13 21:00") %>%
+  filter(CarID %in% c("13" , "15", "16", "34")) %>%
+  group_by(CarID, Deparment, Title, FullName) %>%
+  summarise()
+
+DT::datatable(car_gps_0113)
+```
+
+From the interactive table, all CarIDs identified are from the Security Department. 
+Possibly, _Isia Vann_ and _Edvard Vann_ are relatives because of the same Last Name and working together as Perimeter Controller.
+
+Click [**HERE**](https://adolit-vaa.netlify.app/posts/2021-07-26-assignment-3/) to view the _Visual Detective Assignment Part 3_.
