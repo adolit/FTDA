@@ -24,6 +24,10 @@ navbar:
         href: https://public.tableau.com/app/profile/adolit/viz/DataViz_Makeover01/Dashboard
       - text: "Customer Onboarding (Interactive)"
         href: https://public.tableau.com/app/profile/adolit/viz/Customer_Onboarding_Dashboard/OnboardingDashboard
+  - text: "PythonNotebook"
+    menu:
+      - text: "Adara Challenge Analysis"
+        href: python/Adara_Challenge_Analysis.html
   right:
     - text: "About"
       href: about.html
