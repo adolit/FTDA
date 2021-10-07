@@ -24,10 +24,10 @@ navbar:
         href: https://public.tableau.com/app/profile/adolit/viz/DataViz_Makeover01/Dashboard
       - text: "Customer Onboarding (Interactive)"
         href: https://public.tableau.com/app/profile/adolit/viz/Customer_Onboarding_Dashboard/OnboardingDashboard
-  - text: "PythonNotebook"
+  - text: "Python Notebook"
     menu:
       - text: "Adara Challenge Analysis"
-        href: python/Adara_Challenge_Analysis.html
+        href: https://nbviewer.org/github/adolit/Python/blob/555dd03520e38e21aac7b85017329629cc2290e7/2021-09-11-Adara_Challenge_Analysis/Adara_Challenge_Analysis.ipynb
   right:
     - text: "About"
       href: about.html
